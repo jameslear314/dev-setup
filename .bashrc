@@ -143,4 +143,11 @@ source "$OSH"/oh-my-bash.sh
 # Example aliases
 # alias bashconfig="mate ~/.bashrc"
 # alias ohmybash="mate ~/.oh-my-bash"
-. "$HOME/.cargo/env"
+
+export _Z_IGNORE_THIS_BASH_RC_LOADING_LOCK='please'
+. ~/.bash_profile
+
+HISTSIZE=512
+HISTFILESIZE=40960
+HISTCONTROL=ignoredups
+HISTIGNORE=?:??
