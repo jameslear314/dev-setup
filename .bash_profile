@@ -71,6 +71,14 @@ else
   if [ -z "$_ECHO_PROFILE_COMMONS" ]; then
     echo 'Consider executing'
     echo '  brew install nvm'
+    echo
+  fi
+fi
+if ! [[ `which npm` ]]; then
+  if [ -z "$_ECHO_PROFILE_COMMONS" ]; then
+    echo 'Consider executing'
+    echo '  nvm install node && npm install -g tldr'
+    echo
   fi
 fi
 ### End automatic node stuff
@@ -81,6 +89,7 @@ else
   if [ -z "$_ECHO_PROFILE_COMMONS" ]; then
     echo "Maybe install Rust"
     echo "  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
+    echo
   fi
 fi
 ### End automatic Rust stuff
@@ -101,6 +110,7 @@ if ! brew help &> /dev/null; then
   if [ -z "$_ECHO_PROFILE_COMMONS" ]; then
     echo "Maybe install brew"
     echo '  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
+    echo
   fi
 fi
 ### End automatic brew stuff

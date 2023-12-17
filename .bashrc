@@ -11,6 +11,9 @@ export OSH='/home/james/.oh-my-bash'
 # it'll load a random theme each time that oh-my-bash is loaded.
 OSH_THEME="font"
 
+# If you set OSH_THEME to "random", you can ignore themes you don't like.
+# OMB_THEME_RANDOM_IGNORED=("powerbash10k" "wanelo")
+
 # Uncomment the following line to use case-sensitive completion.
 # OMB_CASE_SENSITIVE="true"
 
@@ -48,10 +51,6 @@ OSH_THEME="font"
 # Uncomment the following line if you want to completely ignore the presence
 # of untracked files in the repository.
 # SCM_GIT_IGNORE_UNTRACKED="true"
-
-# Can't say I like slow git thingies, so perhaps this will speed it up?
-# Seems not, but... why not?
-SCM_GIT_SHOW_MINIMAL_INFO="true"
 
 # Uncomment the following line if you want to change the command execution time
 # stamp shown in the history command output.  One of the following values can
@@ -114,7 +113,16 @@ plugins=(
 #      plugins+=(tmux-autoattach)
 #  fi
 
-source "$OSH"/oh-my-bash.sh
+### Automatic OMB stuff
+if ls "$OSH" &> /dev/null; then
+  . "$OSH"/oh-my-bash.sh
+else
+  if [ -z "$_ECHO_PROFILE_COMMONS" ]; then
+    echo "Maybe install oh-my-bash"
+    echo '  bash -c "$(curl -fsSL https://raw.githubusercontent.com/ohmybash/oh-my-bash/master/tools/install.sh)"'
+  fi
+fi
+### End automatic OMB stuff
 
 # User configuration
 # export MANPATH="/usr/local/man:$MANPATH"
