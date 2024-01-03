@@ -6,34 +6,62 @@ if [ -n "$BASH_VERSION" ]; then
     fi
 fi
 
-# SSH agent, as recommended by https://gist.github.com/darrenpmeyer/e7ad217d929f87a7b7052b3282d1b24c
+BOOT_TIME=`who -b | cut -d't' -f3 | cut -d' ' -f3- | cut -d' ' -f-3`
+BOOT_DATE=`date -d "$BOOT_TIME"`
+BOOT_SECS=`date -d "$BOOT_TIME" +%s`
+
+### Automatic SSH stuff
 ssh_pid_file="$HOME/.config/ssh-agent.pid"
-SSH_AUTH_SOCK="$HOME/.config/ssh-agent.sock"
-if [ -z "$SSH_AGENT_PID" ]
-then
-	# no PID exported, try to get it from pidfile
-	SSH_AGENT_PID=$(cat "$ssh_pid_file")
-fi
+ssh-re-pid () {
+  SSH_AGENT_PID=$(cat "$ssh_pid_file")
+}
 
-if ! kill -0 $SSH_AGENT_PID &> /dev/null
-then
-	# the agent is not running, start it
-	rm -f "$SSH_AUTH_SOCK" &> /dev/null
-	rm -f "$ssh_pid_file" &> /dev/null
-	>&2 echo "Starting SSH agent, since it's not running; this can take a moment"
-	eval "$(ssh-agent -s -a "$SSH_AUTH_SOCK")"
-	echo "$SSH_AGENT_PID" > "$ssh_pid_file"
-	ssh-add -A 2>/dev/null
-
-	>&2 echo "Started ssh-agent with '$SSH_AUTH_SOCK'"
-else
-  if [ -z "$_ECHO_PROFILE_COMMONS" ]; then
-	  >&2 echo "Using shared ssh-agent on '$SSH_AUTH_SOCK' ($SSH_AGENT_PID)"
+join_ssh_agents() {
+  # SSH agent, as recommended by https://gist.github.com/darrenpmeyer/e7ad217d929f87a7b7052b3282d1b24c
+  SSH_AUTH_SOCK="$HOME/.config/ssh-agent.sock"
+  if [[ -z "$SSH_AGENT_PID" ]]
+  then
+    # no PID exported, try to get it from pidfile
+    ssh-re-pid
   fi
-fi
-export SSH_AGENT_PID
-export SSH_AUTH_SOCK
 
+  SSH_CHANGE_TIME=`ls --full-time ~/.config/ssh-agent.pid | cut -d'j' -f 3 | cut -d' ' -f3- | cut -d' ' -f-3`
+  SSH_CHANGE_DATE=`date -d "$SSH_CHANGE_TIME"`
+  SSH_CHANGE_SECS=`date -d "$SSH_CHANGE_TIME" +%s`
+
+  unset needs_ssh_refresh
+  if ! kill -0 $SSH_AGENT_PID &> /dev/null
+  then
+    needs_ssh_refresh="ssh agent not running"
+  elif [[ $BOOT_SECS -gt $SSH_CHANGE_SECS ]]
+  then
+    needs_ssh_refresh="ssh agent not reset since boot"
+  fi
+
+  if [[ ! -z "$needs_ssh_refresh" ]]
+  then
+    # the agent is not running, start it
+    echo $needs_ssh_refresh
+    # Clear the config files
+    rm -f "$SSH_AUTH_SOCK" &> /dev/null
+    rm -f "$ssh_pid_file" &> /dev/null
+    >&2 echo "Starting SSH agent; hold a moment"
+    eval "$(ssh-agent -s -a "$SSH_AUTH_SOCK")"
+    echo "$SSH_AGENT_PID" > "$ssh_pid_file"
+    ssh-add 2>/dev/null
+
+    >&2 echo "Started ssh-agent with '$SSH_AUTH_SOCK'"
+  else
+    if [ -z "$_ECHO_PROFILE_COMMONS" ]; then
+      >&2 echo "Using shared ssh-agent on '$SSH_AUTH_SOCK' ($SSH_AGENT_PID)"
+    fi
+  fi
+  export SSH_AGENT_PID
+  export SSH_AUTH_SOCK
+}
+join_ssh_agents
+unset needs_ssh_refresh
+### End automatic SSH stuff
 ### Automatic node stuff
 find_nvm_root() {
   if [ -d "$HOME/.nvm/.git" ]; then
@@ -46,7 +74,7 @@ find_nvm_root() {
 }
 if [ find_nvm_root ]
 then
-  export NVM_DIR="$HOME/.nvm"
+  NVM_DIR="$HOME/.nvm"
   [ -s "/home/linuxbrew/.linuxbrew/opt/nvm/nvm.sh" ] && \. "/home/linuxbrew/.linuxbrew/opt/nvm/nvm.sh"  # This loads nvm
   [ -s "/home/linuxbrew/.linuxbrew/opt/nvm/etc/bash_completion.d/nvm" ] && \. "/home/linuxbrew/.linuxbrew/opt/nvm/etc/bash_completion.d/nvm"  # This loads nvm bash_completion
 
@@ -115,25 +143,26 @@ if ! brew help &> /dev/null; then
 fi
 ### End automatic brew stuff
 ### Automatic update command
-export DISTRO=`grep ^NAME= /etc/os-release | cut -d '"' -f2`
-export DISTRO_PRETTY=`grep ^PRETTY_NAME= /etc/os-release | cut -d '"' -f2`
+DISTRO=`grep ^NAME= /etc/os-release | cut -d '"' -f2`
+DISTRO_PRETTY=`grep ^PRETTY_NAME= /etc/os-release | cut -d '"' -f2`
 if [[ "$DISTRO" -eq "Ubuntu" ]]; then
-  export _PACKAGE_MANAGER=apt
+  _PACKAGE_MANAGER=apt
 else
   echo "Not an Ubuntu; unsure how to update"
-  export _PACKAGE_MANAGER=undefined
+  _PACKAGE_MANAGER=undefined
 fi
 alias update-all="sudo $_PACKAGE_MANAGER update && sudo $_PACKAGE_MANAGER upgrade -y && sudo $_PACKAGE_MANAGER dist-upgrade -y && sudo $_PACKAGE_MANAGER autoremove"
 ### End automatic update command
 
 ### exports
-export EDITOR="vim"
-export GPG_TTY=$(tty)
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib/
-export _ECHO_PROFILE_COMMONS='disabled'
+EDITOR="vim"
+GPG_TTY=$(tty)
+LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib/
+_ECHO_PROFILE_COMMONS='disabled'
 
 
 ### aliases
 alias activate='if [ `command -v deactivate` ]; then deactivate; fi; ls ./venv/bin/activate &> /dev/null && . ./venv/bin/activate || echo No pythonic virtual environment found. Perhaps one of the following? && for dir in `find . -maxdepth 3 -type d -name "*venv*"`; do find $dir -maxdepth 2 -type f -name "activate"; done;'
 alias unify-ssh-agent='SSH_AGENT_PID=$(cat "$HOME/.config/ssh-agent.pid")'
 alias refresh-bash-profile='. ~/.bash_profile'
+unset BOOT_TIME BOOT_SECS ssh_pid_file SSH_CHANGE_DATE needs_ssh_refresh
