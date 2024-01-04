@@ -155,7 +155,7 @@ fi
 export _Z_IGNORE_THIS_BASH_RC_LOADING_LOCK='please'
 . ~/.bash_profile
 
-HISTSIZE=512
-HISTFILESIZE=40960
-HISTCONTROL=ignoredups
-HISTIGNORE=?:??
+export HISTSIZE=512
+export HISTFILESIZE=40960
+export HISTCONTROL=ignoredups
+export HISTIGNORE=?:??

@@ -6,18 +6,24 @@ if [ -n "$BASH_VERSION" ]; then
     fi
 fi
 
-BOOT_TIME=`who -b | cut -d't' -f3 | cut -d' ' -f3- | cut -d' ' -f-3`
-BOOT_DATE=`date -d "$BOOT_TIME"`
-BOOT_SECS=`date -d "$BOOT_TIME" +%s`
+boot_time=`who -b | cut -d't' -f3 | cut -d' ' -f3- | cut -d' ' -f-3`
+boot_secs=`date -d "$boot_time" +%s`
+if [[ "$EUID" -eq 0 ]]; then
+  is_root="yep"
+fi
 
 ### Automatic SSH stuff
-ssh_pid_file="$HOME/.config/ssh-agent.pid"
-ssh-re-pid () {
-  SSH_AGENT_PID=$(cat "$ssh_pid_file")
-}
-
 join_ssh_agents() {
+  if [[ -n "$is_root" ]]; then
+    unset SSH_AGENT_PID ssh-re-pid join_ssh_agents
+    return
+  fi
   # SSH agent, as recommended by https://gist.github.com/darrenpmeyer/e7ad217d929f87a7b7052b3282d1b24c
+  local ssh_pid_file="$HOME/.config/ssh-agent.pid"
+  ssh-re-pid () {
+    SSH_AGENT_PID=$(cat "$ssh_pid_file")
+  }
+
   SSH_AUTH_SOCK="$HOME/.config/ssh-agent.sock"
   if [[ -z "$SSH_AGENT_PID" ]]
   then
@@ -25,15 +31,15 @@ join_ssh_agents() {
     ssh-re-pid
   fi
 
-  SSH_CHANGE_TIME=`ls --full-time ~/.config/ssh-agent.pid | cut -d'j' -f 3 | cut -d' ' -f3- | cut -d' ' -f-3`
-  SSH_CHANGE_DATE=`date -d "$SSH_CHANGE_TIME"`
-  SSH_CHANGE_SECS=`date -d "$SSH_CHANGE_TIME" +%s`
+  local ssh_change_time=`ls --full-time $ssh_pid_file | cut -d'j' -f 3 | cut -d' ' -f3- | cut -d' ' -f-3`
+  local ssh_change_secs=`date -d "$ssh_change_time" +%s`
 
   unset needs_ssh_refresh
+  local needs_ssh_refresh
   if ! kill -0 $SSH_AGENT_PID &> /dev/null
   then
     needs_ssh_refresh="ssh agent not running"
-  elif [[ $BOOT_SECS -gt $SSH_CHANGE_SECS ]]
+  elif [[ $boot_secs -gt $ssh_change_secs ]]
   then
     needs_ssh_refresh="ssh agent not reset since boot"
   fi
@@ -60,7 +66,6 @@ join_ssh_agents() {
   export SSH_AUTH_SOCK
 }
 join_ssh_agents
-unset needs_ssh_refresh
 ### End automatic SSH stuff
 ### Automatic node stuff
 find_nvm_root() {
@@ -74,6 +79,7 @@ find_nvm_root() {
 }
 if [ find_nvm_root ]
 then
+  has_nvm="yep"
   NVM_DIR="$HOME/.nvm"
   [ -s "/home/linuxbrew/.linuxbrew/opt/nvm/nvm.sh" ] && \. "/home/linuxbrew/.linuxbrew/opt/nvm/nvm.sh"  # This loads nvm
   [ -s "/home/linuxbrew/.linuxbrew/opt/nvm/etc/bash_completion.d/nvm" ] && \. "/home/linuxbrew/.linuxbrew/opt/nvm/etc/bash_completion.d/nvm"  # This loads nvm bash_completion
@@ -102,7 +108,9 @@ else
     echo
   fi
 fi
+has_npm="yep"
 if ! [[ `which npm` ]]; then
+  unset has_npm
   if [ -z "$_ECHO_PROFILE_COMMONS" ]; then
     echo 'Consider executing'
     echo '  nvm install node && npm install -g tldr'
@@ -113,8 +121,9 @@ fi
 ### Automatic Rust stuff
 if ls ~/.cargo/ &> /dev/null; then
   . "$HOME/.cargo/env"
+  has_rust="yep"
 else
-  if [ -z "$_ECHO_PROFILE_COMMONS" ]; then
+  if [[ -z "$_ECHO_PROFILE_COMMONS" && -z "$is_root" ]]; then
     echo "Maybe install Rust"
     echo "  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
     echo
@@ -122,7 +131,7 @@ else
 fi
 ### End automatic Rust stuff
 ### Automatic path shenanigans
-for PATH_SUFFIX in /home/linuxbrew/.linuxbrew/bin /usr/local/cuda-12.3/bin /usr/local/go/bin; do
+for PATH_SUFFIX in /home/linuxbrew/.linuxbrew/bin /usr/local/cuda-12.3/bin /usr/local/go/bin /source/bin; do
   if ls $PATH_SUFFIX &> /dev/null; then
 	  echo $PATH | grep $PATH_SUFFIX &> /dev/null || export PATH="$PATH:$PATH_SUFFIX"
   fi
@@ -134,8 +143,10 @@ for PATH_PREFIX in /home/linuxbrew/.linuxbrew/opt/python@3.10/bin; do
 done
 ### End automatic path shenanigans
 ### Automatic brew stuff
+has_brew="yep"
 if ! brew help &> /dev/null; then
-  if [ -z "$_ECHO_PROFILE_COMMONS" ]; then
+  unset has_brew
+  if [[ -z "$_ECHO_PROFILE_COMMONS" && -z "$is_root" ]]; then
     echo "Maybe install brew"
     echo '  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
     echo
@@ -143,26 +154,45 @@ if ! brew help &> /dev/null; then
 fi
 ### End automatic brew stuff
 ### Automatic update command
-DISTRO=`grep ^NAME= /etc/os-release | cut -d '"' -f2`
-DISTRO_PRETTY=`grep ^PRETTY_NAME= /etc/os-release | cut -d '"' -f2`
-if [[ "$DISTRO" -eq "Ubuntu" ]]; then
-  _PACKAGE_MANAGER=apt
+distro=`grep ^NAME= /etc/os-release | cut -d '"' -f2`
+distro_pretty=`grep ^PRETTY_NAME= /etc/os-release | cut -d '"' -f2`
+_package_manager=undefined
+if [[ "$distro" -eq "Ubuntu" ]]; then
+  _package_manager=apt
 else
   echo "Not an Ubuntu; unsure how to update"
-  _PACKAGE_MANAGER=undefined
 fi
-alias update-all="sudo $_PACKAGE_MANAGER update && sudo $_PACKAGE_MANAGER upgrade -y && sudo $_PACKAGE_MANAGER dist-upgrade -y && sudo $_PACKAGE_MANAGER autoremove"
+distro="$distro_pretty"
+# posible sub-updates
+if [ -n "$has_nvm" ]; then
+  update_suffix="$update_suffix && nvm install --lts"
+fi
+if [ -n "$has_npm" ]; then
+  update_suffix="$update_suffix && npm install -g npm && npm update -g"
+fi
+if [ -n "$has_rust" ]; then
+  update_suffix="$update_suffix && rustup update"
+fi
+if [ -n "$has_brew" ]; then
+  update_suffix="$update_suffix && brew update && brew upgrade"
+fi
+# the auto-update command
+alias update-all="sudo $_package_manager update && sudo $_package_manager upgrade -y && sudo $_package_manager dist-upgrade -y && sudo $_package_manager autoremove$update_suffix"
 ### End automatic update command
 
 ### exports
-EDITOR="vim"
-GPG_TTY=$(tty)
-LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib/
-_ECHO_PROFILE_COMMONS='disabled'
+export EDITOR="vim"
+export GPG_TTY=$(tty)
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib/
+export _ECHO_PROFILE_COMMONS='disabled'
 
 
 ### aliases
 alias activate='if [ `command -v deactivate` ]; then deactivate; fi; ls ./venv/bin/activate &> /dev/null && . ./venv/bin/activate || echo No pythonic virtual environment found. Perhaps one of the following? && for dir in `find . -maxdepth 3 -type d -name "*venv*"`; do find $dir -maxdepth 2 -type f -name "activate"; done;'
 alias unify-ssh-agent='SSH_AGENT_PID=$(cat "$HOME/.config/ssh-agent.pid")'
 alias refresh-bash-profile='. ~/.bash_profile'
-unset BOOT_TIME BOOT_SECS ssh_pid_file SSH_CHANGE_DATE needs_ssh_refresh
+alias firstpush='git push --set-upstream origin $(git branch --show-current)'
+alias findf='find -type f -name'
+alias findd='find -type d -name'
+
+unset boot_time boot_secs distro_pretty _package_manager find_nvm_root has_nvm has_npm has_rust has_brew update_suffix is_root
